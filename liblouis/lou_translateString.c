@@ -1065,15 +1065,15 @@ int EXPORT_CALL
 lou_translate(const char *tableList, const widechar *inbufx, int *inlen, widechar *outbuf,
 		int *outlen, formtype *typeform, char *spacing, int *outputPos, int *inputPos,
 		int *cursorPos, int mode) {
-	return _lou_translate(tableList, inbufx, inlen, outbuf, outlen, typeform, spacing,
-			outputPos, inputPos, cursorPos, mode, NULL, NULL);
+	return _lou_translate(tableList, tableList, inbufx, inlen, outbuf, outlen, typeform,
+			spacing, outputPos, inputPos, cursorPos, mode, NULL, NULL);
 }
 
 int EXPORT_CALL
-_lou_translate(const char *tableList, const widechar *inbufx, int *inlen,
-		widechar *outbuf, int *outlen, formtype *typeform, char *spacing, int *outputPos,
-		int *inputPos, int *cursorPos, int mode, const TranslationTableRule **rules,
-		int *rulesLen) {
+_lou_translate(const char *tableList, const char *displayTableList,
+		const widechar *inbufx, int *inlen, widechar *outbuf, int *outlen,
+		formtype *typeform, char *spacing, int *outputPos, int *inputPos, int *cursorPos,
+		int mode, const TranslationTableRule **rules, int *rulesLen) {
 	// int i;
 	// for(i = 0; i < *inlen; i++)
 	// {
@@ -1122,7 +1122,8 @@ _lou_translate(const char *tableList, const widechar *inbufx, int *inlen,
 	if (!_lou_isValidMode(mode))
 		_lou_logMessage(LOU_LOG_ERROR, "Invalid mode parameter: %d", mode);
 
-	table = lou_getTable(tableList);
+	if (displayTableList == NULL) displayTableList = tableList;
+	table = _lou_getTable(tableList, displayTableList);
 	if (table == NULL || *inlen < 0 || *outlen < 0) return 0;
 	k = 0;
 	while (k < *inlen && inbufx[k]) k++;

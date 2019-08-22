@@ -140,15 +140,15 @@ int EXPORT_CALL
 lou_backTranslate(const char *tableList, const widechar *inbuf, int *inlen,
 		widechar *outbuf, int *outlen, formtype *typeform, char *spacing, int *outputPos,
 		int *inputPos, int *cursorPos, int modex) {
-	return _lou_backTranslate(tableList, inbuf, inlen, outbuf, outlen, typeform, spacing,
-			outputPos, inputPos, cursorPos, modex, NULL, NULL);
+	return _lou_backTranslate(tableList, tableList, inbuf, inlen, outbuf, outlen,
+			typeform, spacing, outputPos, inputPos, cursorPos, modex, NULL, NULL);
 }
 
 int EXPORT_CALL
-_lou_backTranslate(const char *tableList, const widechar *inbuf, int *inlen,
-		widechar *outbuf, int *outlen, formtype *typeform, char *spacing, int *outputPos,
-		int *inputPos, int *cursorPos, int mode, const TranslationTableRule **rules,
-		int *rulesLen) {
+_lou_backTranslate(const char *tableList, const char *displayTableList,
+		const widechar *inbuf, int *inlen, widechar *outbuf, int *outlen,
+		formtype *typeform, char *spacing, int *outputPos, int *inputPos, int *cursorPos,
+		int mode, const TranslationTableRule **rules, int *rulesLen) {
 	InString input;
 	OutString output;
 	unsigned char *typebuf = NULL;
@@ -174,7 +174,8 @@ _lou_backTranslate(const char *tableList, const widechar *inbuf, int *inlen,
 	if (tableList == NULL || inbuf == NULL || inlen == NULL || outbuf == NULL ||
 			outlen == NULL)
 		return 0;
-	const TranslationTableHeader *table = lou_getTable(tableList);
+	if (displayTableList == NULL) displayTableList = tableList;
+	const TranslationTableHeader *table = _lou_getTable(tableList, displayTableList);
 	if (table == NULL) return 0;
 
 	if (!_lou_isValidMode(mode))

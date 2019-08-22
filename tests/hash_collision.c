@@ -18,6 +18,7 @@ main (int argc, char **argv)
   char *table = "tests/tables/empty.ctb";
   char rule[18];
 
+  lou_getTable(table);
   lou_compileString(table, "include tables/latinLetterDef6Dots.uti");
 
   for (char c1 = 'a'; c1 <= 'z'; c1++) {

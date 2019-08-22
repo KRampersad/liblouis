@@ -2653,6 +2653,7 @@ doOpcode:
 				table, displayTable);
 		break;
 	case CTO_Display:
+		if (!displayTable) break;
 		if (getRuleCharsText(nested, &ruleChars, &lastToken))
 			if (getRuleDotsPattern(nested, &ruleDots, &lastToken)) {
 				if (ruleChars.length != 1 || ruleDots.length != 1) {
@@ -2664,21 +2665,21 @@ doOpcode:
 						nested, ruleChars.chars[0], ruleDots.chars[0], displayTable);
 			}
 		break;
+	case CTO_IncludeFile: {
+		CharsString includedFile;
+		if (getToken(nested, &token, "include file name", &lastToken))
+			if (parseChars(nested, &includedFile, &token))
+				if (!includeFile(nested, &includedFile, characterClasses,
+							characterClassAttribute, opcodeLengths, newRuleOffset,
+							newRule, ruleNames, table, displayTable))
+					ok = 0;
+		break;
+	}
 	default:
 		if (!table) break;
 		switch (opcode) {
 		case CTO_None:
 			break;
-		case CTO_IncludeFile: {
-			CharsString includedFile;
-			if (getToken(nested, &token, "include file name", &lastToken))
-				if (parseChars(nested, &includedFile, &token))
-					if (!includeFile(nested, &includedFile, characterClasses,
-								characterClassAttribute, opcodeLengths, newRuleOffset,
-								newRule, ruleNames, table, displayTable))
-						ok = 0;
-			break;
-		}
 		case CTO_Locale:
 			compileWarning(nested,
 					"The locale opcode is not implemented. Use the locale meta data "
@@ -4113,11 +4114,15 @@ includeFile(FileInfo *nested, CharsString *includedFile,
  *
  */
 static int
-compileTable(const char *tableList, TranslationTableHeader **translationTable,
-		DisplayTableHeader **displayTable, CharacterClass **characterClasses,
+compileTable(const char *tableList, const char *displayTableList,
+		TranslationTableHeader **translationTable, DisplayTableHeader **displayTable,
+		CharacterClass **characterClasses,
 		TranslationTableCharacterAttributes *characterClassAttribute,
 		short opcodeLengths[], TranslationTableOffset *newRuleOffset,
 		TranslationTableRule **newRule, RuleName **ruleNames) {
+	if (translationTable && !tableList) return 0;
+	if (displayTable && !displayTableList) return 0;
+	if (!translationTable && !displayTable) return 0;
 	if (translationTable) *translationTable = NULL;
 	if (displayTable) *displayTable = NULL;
 	char **tableFiles;
@@ -4125,7 +4130,6 @@ compileTable(const char *tableList, TranslationTableHeader **translationTable,
 	errorCount = warningCount = fileCount = 0;
 	*characterClasses = NULL;
 	*ruleNames = NULL;
-	if (tableList == NULL) return 0;
 	if (!opcodeLengths[0]) {
 		TranslationTableOpcode opcode;
 		for (opcode = 0; opcode < CTO_None; opcode++)
@@ -4146,16 +4150,47 @@ compileTable(const char *tableList, TranslationTableHeader **translationTable,
 			characterClassAttribute, opcodeLengths, newRuleOffset, newRule, ruleNames,
 			translationTable, displayTable);
 
-	/* Compile all subtables in the list */
-	if (!(tableFiles = _lou_resolveTable(tableList, NULL))) {
-		errorCount++;
-		goto cleanup;
-	}
-	for (subTable = tableFiles; *subTable; subTable++)
-		if (!compileFile(*subTable, characterClasses, characterClassAttribute,
-					opcodeLengths, newRuleOffset, newRule, ruleNames, translationTable,
-					displayTable))
+	if (displayTable && translationTable && strcmp(tableList, displayTableList) == 0) {
+		/* Compile the display and translation tables in one go */
+
+		/* Compile all subtables in the list */
+		if (!(tableFiles = _lou_resolveTable(tableList, NULL))) {
+			errorCount++;
 			goto cleanup;
+		}
+		for (subTable = tableFiles; *subTable; subTable++)
+			if (!compileFile(*subTable, characterClasses, characterClassAttribute,
+						opcodeLengths, newRuleOffset, newRule, ruleNames,
+						translationTable, displayTable))
+				goto cleanup;
+	} else {
+		/* Compile the display and translation tables separately */
+
+		if (displayTable) {
+			if (!(tableFiles = _lou_resolveTable(displayTableList, NULL))) {
+				errorCount++;
+				goto cleanup;
+			}
+			for (subTable = tableFiles; *subTable; subTable++)
+				if (!compileFile(*subTable, characterClasses, characterClassAttribute,
+							opcodeLengths, newRuleOffset, newRule, ruleNames, NULL,
+							displayTable))
+					goto cleanup;
+			free_tablefiles(tableFiles);
+			tableFiles = NULL;
+		}
+		if (translationTable) {
+			if (!(tableFiles = _lou_resolveTable(tableList, NULL))) {
+				errorCount++;
+				goto cleanup;
+			}
+			for (subTable = tableFiles; *subTable; subTable++)
+				if (!compileFile(*subTable, characterClasses, characterClassAttribute,
+							opcodeLengths, newRuleOffset, newRule, ruleNames,
+							translationTable, NULL))
+					goto cleanup;
+		}
+	}
 
 /* Clean up after compiling files */
 cleanup:
@@ -4185,7 +4220,7 @@ char const **EXPORT_CALL
 lou_getEmphClasses(const char *tableList) {
 	const char *names[MAX_EMPH_CLASSES + 1];
 	unsigned int count = 0;
-	const TranslationTableHeader *table = lou_getTable(tableList);
+	const TranslationTableHeader *table = _lou_getTable(tableList, NULL);
 	if (!table) return NULL;
 
 	while (count < MAX_EMPH_CLASSES) {
@@ -4209,14 +4244,20 @@ lou_getEmphClasses(const char *tableList) {
 /* Checks and loads tableList. */
 void *EXPORT_CALL
 lou_getTable(const char *tableList) {
+	return _lou_getTable(tableList, tableList);
+}
+
+void *EXPORT_CALL
+_lou_getTable(const char *tableList, const char *displayTableList) {
 	/* Keep track of which tables have already been compiled */
-	int tableListLen;
+	int tableListLen, displayTableListLen = 0;
 	TranslationTableHeader *translationTable = NULL;
 	DisplayTableHeader *displayTable = NULL;
 	if (tableList == NULL || *tableList == 0) return NULL;
-	errorCount = fileCount = 0;
+	if (displayTableList == NULL || *displayTableList == 0) displayTableList = NULL;
 	tableListLen = (int)strlen(tableList);
-	/* See if Table has already been compiled */
+	if (displayTableList != NULL) displayTableListLen = (int)strlen(displayTableList);
+	/* See if translation table has already been compiled */
 	{
 		TranslationTableChainEntry *currentEntry = translationTableChain;
 		TranslationTableChainEntry *prevEntry = NULL;
@@ -4236,12 +4277,14 @@ lou_getTable(const char *tableList) {
 			currentEntry = currentEntry->next;
 		}
 	}
-	{
+	/* See if display table has already been compiled */
+	if (displayTableList) {
 		DisplayTableChainEntry *currentEntry = displayTableChain;
 		DisplayTableChainEntry *prevEntry = NULL;
 		while (currentEntry != NULL) {
-			if (tableListLen == currentEntry->tableListLength &&
-					(memcmp(&currentEntry->tableList[0], tableList, tableListLen)) == 0) {
+			if (displayTableListLen == currentEntry->tableListLength &&
+					(memcmp(&currentEntry->tableList[0], displayTableList,
+							displayTableListLen)) == 0) {
 				/* Move the table to the top of the table chain. */
 				if (prevEntry != NULL) {
 					prevEntry->next = currentEntry->next;
@@ -4255,14 +4298,14 @@ lou_getTable(const char *tableList) {
 			currentEntry = currentEntry->next;
 		}
 	}
-	if (translationTable == NULL || displayTable == NULL) {
+	if (translationTable == NULL || (displayTableList && displayTable == NULL)) {
 		TranslationTableHeader **newTranslationTable = NULL;
 		DisplayTableHeader **newDisplayTable = NULL;
 		if (translationTable == NULL) newTranslationTable = &translationTable;
-		if (displayTable == NULL) newDisplayTable = &displayTable;
-		if (compileTable(tableList, newTranslationTable, newDisplayTable,
-					&gCharacterClasses, &gCharacterClassAttribute, gOpcodeLengths,
-					&gNewRuleOffset, &gNewRule, &gRuleNames)) {
+		if (displayTable == NULL && displayTableList) newDisplayTable = &displayTable;
+		if (compileTable(tableList, displayTableList, newTranslationTable,
+					newDisplayTable, &gCharacterClasses, &gCharacterClassAttribute,
+					gOpcodeLengths, &gNewRuleOffset, &gNewRule, &gRuleNames)) {
 			/* Add a new entry to the top of the table chain. */
 			if (newTranslationTable != NULL) {
 				int entrySize = sizeof(TranslationTableChainEntry) + tableListLen;
@@ -4275,13 +4318,13 @@ lou_getTable(const char *tableList) {
 				translationTableChain = newEntry;
 			}
 			if (newDisplayTable != NULL) {
-				int entrySize = sizeof(DisplayTableChainEntry) + tableListLen;
+				int entrySize = sizeof(DisplayTableChainEntry) + displayTableListLen;
 				DisplayTableChainEntry *newEntry = malloc(entrySize);
 				if (!newEntry) _lou_outOfMemory();
 				newEntry->next = displayTableChain;
 				newEntry->table = *newDisplayTable;
-				newEntry->tableListLength = tableListLen;
-				memcpy(&newEntry->tableList[0], tableList, tableListLen);
+				newEntry->tableListLength = displayTableListLen;
+				memcpy(&newEntry->tableList[0], displayTableList, displayTableListLen);
 				displayTableChain = newEntry;
 			}
 		} else {
@@ -4289,7 +4332,7 @@ lou_getTable(const char *tableList) {
 			return NULL;
 		}
 	}
-	currentDisplayTable = displayTable;
+	if (displayTable) currentDisplayTable = displayTable;
 	return translationTable;
 }
 
@@ -4486,7 +4529,10 @@ lou_charSize(void) {
 int EXPORT_CALL
 lou_compileString(const char *tableList, const char *inString) {
 	int r;
-	TranslationTableHeader *table = lou_getTable(tableList);
+	// update existing currentDisplayTable
+	// if currentDisplayTable is NULL, create one from tableList
+	TranslationTableHeader *table =
+			_lou_getTable(tableList, currentDisplayTable ? NULL : tableList);
 	if (!table) return 0;
 	r = compileString(inString, &gCharacterClasses, &gCharacterClassAttribute,
 			gOpcodeLengths, &gNewRuleOffset, &gNewRule, &gRuleNames, &table,
