@@ -146,13 +146,13 @@ check_base(const char *tableList, const char *input, const char *expected,
 		// provided a too short output buffer.
 		for (int k = 1; k <= 3; k++) {
 			if (direction == 1) {
-				funcStatus = lou_backTranslate(tableList, inbuf, &actualInlen, outbuf,
-						&outlen, typeformbuf, NULL, outputPos, inputPos, &cursorPos,
-						in.mode);
+				funcStatus = _lou_backTranslate(tableList, in.display_table, inbuf,
+						&actualInlen, outbuf, &outlen, typeformbuf, NULL, outputPos,
+						inputPos, &cursorPos, in.mode, NULL, NULL);
 			} else {
-				funcStatus = lou_translate(tableList, inbuf, &actualInlen, outbuf,
-						&outlen, typeformbuf, NULL, outputPos, inputPos, &cursorPos,
-						in.mode);
+				funcStatus = _lou_translate(tableList, in.display_table, inbuf,
+						&actualInlen, outbuf, &outlen, typeformbuf, NULL, outputPos,
+						inputPos, &cursorPos, in.mode, NULL, NULL);
 			}
 			if (!funcStatus) {
 				fprintf(stderr, "Translation failed.\n");
@@ -299,6 +299,8 @@ check_base(const char *tableList, const char *input, const char *expected,
 		// example you can define a test for multiple tables.
 		if (retval != 0 && in.diagnostics) {
 			fprintf(stderr, "Table: %s\n", tableList);
+			if (in.display_table)
+				fprintf(stderr, "Display table: %s\n", in.display_table);
 			// add an empty line after each error
 			fprintf(stderr, "\n");
 		}
